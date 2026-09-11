@@ -11,8 +11,8 @@ Metadata package `@relgeo/geometry` saat ini adalah `0.5.0`, pada compatibility 
 Status packaging saat ini:
 
 * package ini adalah low-level library surface
-* konsumsi utamanya saat ini datang dari package workspace lain di monorepo RelGeo
-* ia bukan onboarding surface utama bagi pengguna baru
+* package publik tersedia melalui npm sebagai `@relgeo/geometry`
+* ia tetap merupakan low-level library dan bukan onboarding surface utama bagi pengguna baru
 
 Pakai package ini jika Anda ingin:
 

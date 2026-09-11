@@ -1,6 +1,6 @@
 {
-  "name": "relgeo-geometry",
-  "version": "0.4.0",
+  "name": "@relgeo/geometry",
+  "version": "0.5.0",
   "description": "Pure 2D analytical geometry mathematics library for RelGeo",
   "homepage": "https://relgeo.github.io/",
   "repository": {
@@ -35,6 +35,10 @@
   ],
   "author": "Agus Made",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "packageManager": "pnpm@10.33.3",
   "devDependencies": {
     "tsup": "^8.5.1",

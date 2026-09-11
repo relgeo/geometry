@@ -6,7 +6,7 @@ Package ini menampung operasi geometri analitik yang dipakai oleh runtime dan re
 
 Package ini bukan source of truth bahasa, tetapi ia menopang implementasi kontrak aktif repo saat ini, yaitu `RelGeo DSL v0.5`.
 
-Metadata package `relgeo-geometry` saat ini adalah `0.4.0`. Versi package adalah metadata library workspace dan terpisah dari kontrak DSL `v0.5`; angka ini bukan klaim publish publik.
+Metadata package `@relgeo/geometry` saat ini adalah `0.5.0`, pada compatibility line RelGeo DSL `v0.5`. Patch release dapat bergerak mandiri; perubahan kontrak bahasa akan dinaikkan bersama ke line berikutnya.
 
 Status packaging saat ini:
 
@@ -20,7 +20,7 @@ Pakai package ini jika Anda ingin:
 * berbagi logika intersection atau path math lintas runtime/renderer
 * memisahkan numerics dari kontrak DSL tingkat atas
 
-Jika yang Anda butuhkan adalah DSL RelGeo itu sendiri, mulai dari `relgeo-core`, bukan dari package ini.
+Jika yang Anda butuhkan adalah DSL RelGeo itu sendiri, mulai dari `@relgeo/core`, bukan dari package ini.
 
 Dalam monorepo ini:
 
@@ -30,8 +30,8 @@ pnpm install
 
 Peran package ini di repo:
 
-* fondasi numerik untuk `relgeo-core`
-* fondasi geometri untuk `relgeo-renderer-svg`
+* fondasi numerik untuk `@relgeo/core`
+* fondasi geometri untuk `@relgeo/renderer-svg`
 * tempat yang tepat untuk logika 2D analitik yang tidak seharusnya bercampur dengan kontrak DSL
 
 Dokumen terkait:

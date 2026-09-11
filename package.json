@@ -1,0 +1,47 @@
+{
+  "name": "relgeo-geometry",
+  "version": "0.4.0",
+  "description": "Pure 2D analytical geometry mathematics library for RelGeo",
+  "homepage": "https://relgeo.github.io/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/relgeo/geometry.git"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --noEmit && tsup",
+    "dev": "tsc --noEmit && tsup --watch",
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "geometry",
+    "math2d",
+    "vector",
+    "bezier",
+    "intersection"
+  ],
+  "author": "Agus Made",
+  "license": "MIT",
+  "packageManager": "pnpm@10.33.3",
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "polygon-clipping": "^0.15.7"
+  }
+}

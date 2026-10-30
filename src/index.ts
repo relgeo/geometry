@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./error";
+export * from "./tolerance";
 export * from "./transforms";
 export * from "./utils";
 export * from "./intersection";

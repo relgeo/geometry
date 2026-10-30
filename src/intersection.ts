@@ -1,5 +1,5 @@
 /**
- * Generalized Intersection Engine — RelGeo v0.3
+ * Generalized Intersection Engine — RelGeo DSL 0.5 compatibility line
  *
  * Ordering contract (deterministic):
  *   Results are sorted by x ascending, then by y ascending as tiebreaker.
@@ -17,6 +17,44 @@ import type {
   PathResolvedSegment,
   Point2D,
 } from "./types";
+import { GeometryError } from "./error";
+import { GEOMETRY_TOLERANCES } from "./tolerance";
+
+/** Canonical, currently supported pair keys used by `computeIntersections`. */
+export const SUPPORTED_INTERSECTION_PAIRS = [
+  "line-line",
+  "circle-line",
+  "arc-line",
+  "circle-circle",
+  "arc-circle",
+  "arc-arc",
+  "line-path",
+  "line-polygon",
+  "line-rect",
+  "circle-path",
+  "circle-polygon",
+  "circle-rect",
+  "arc-path",
+  "arc-polygon",
+  "arc-rect",
+  "path-path",
+  "path-polygon",
+  "path-rect",
+  "polygon-polygon",
+  "polygon-rect",
+  "rect-rect",
+] as const;
+
+/** Selector forms accepted by `applySelector`. */
+export const SUPPORTED_INTERSECTION_SELECTORS = [
+  "first",
+  "last",
+  "index",
+  "nearest",
+  "farthest",
+] as const;
+
+const supportedPairSet = new Set<string>(SUPPORTED_INTERSECTION_PAIRS);
 type SegmentLike =
   | LineLike
   | ArcLike
@@ -41,8 +79,41 @@ type ArcLike = {
 type QuadraticLike = { type: "quadratic"; x1: number; y1: number; cpx: number; cpy: number; x2: number; y2: number };
 type CubicLike = { type: "cubic"; x1: number; y1: number; cp1x: number; cp1y: number; cp2x: number; cp2y: number; x2: number; y2: number };
 
-// Internal tolerance for geometric equality
-const TOLERANCE = 1e-9;
+// Internal tolerance for geometric equality. See tolerance.ts for the policy.
+const TOLERANCE = GEOMETRY_TOLERANCES.intersection;
+
+function assertFinite(value: number, label: string): void {
+  if (!Number.isFinite(value)) {
+    throw new GeometryError(`${label} must be finite`, "INVALID_INTERSECTION_INPUT");
+  }
+}
+
+function validateLine(line: LineLike): void {
+  for (const [value, label] of [
+    [line.x1, "line.x1"],
+    [line.y1, "line.y1"],
+    [line.x2, "line.x2"],
+    [line.y2, "line.y2"],
+  ] as const) {
+    assertFinite(value, label);
+  }
+  if (Math.hypot(line.x2 - line.x1, line.y2 - line.y1) <= TOLERANCE) {
+    throw new GeometryError("line has zero length", "INVALID_INTERSECTION_INPUT");
+  }
+}
+
+function validateCircle(circle: ResolvedCircle): void {
+  for (const [value, label] of [
+    [circle.cx, "circle.cx"],
+    [circle.cy, "circle.cy"],
+    [circle.radius, "circle.radius"],
+  ] as const) {
+    assertFinite(value, label);
+  }
+  if (circle.radius <= TOLERANCE) {
+    throw new GeometryError("circle radius must be positive", "INVALID_INTERSECTION_INPUT");
+  }
+}
 
 function eq(a: number, b: number): boolean {
   return Math.abs(a - b) < TOLERANCE;
@@ -72,6 +143,8 @@ export function intersectLines(
   l1: LineLike,
   l2: LineLike
 ): Point2D | null {
+  validateLine(l1);
+  validateLine(l2);
   const { x1, y1, x2, y2 } = l1;
   const { x1: x3, y1: y3, x2: x4, y2: y4 } = l2;
 
@@ -122,6 +195,8 @@ export function intersectLineCircle(
   line: LineLike,
   circle: ResolvedCircle
 ): Point2D[] {
+  validateLine(line);
+  validateCircle(circle);
   const { x1, y1, x2, y2 } = line;
   const { cx, cy, radius: r } = circle;
 
@@ -159,6 +234,8 @@ export function intersectCircles(
   c1: ResolvedCircle,
   c2: ResolvedCircle
 ): Point2D[] {
+  validateCircle(c1);
+  validateCircle(c2);
   const dx = c2.cx - c1.cx;
   const dy = c2.cy - c1.cy;
   const d = Math.hypot(dx, dy);
@@ -627,12 +704,15 @@ export function applySelector(
   label: string
 ): Point2D {
   if (points.length === 0) {
-    throw new Error(`NO_INTERSECTION: ${label}`);
+    throw new GeometryError(`no intersection: ${label}`, "NO_INTERSECTION");
   }
 
   if (selector === undefined) {
     if (points.length > 1) {
-      throw new Error(`MULTIPLE_INTERSECTIONS: ${label} yields ${points.length} results. Use a selector.`);
+      throw new GeometryError(
+        `${label} yields ${points.length} results. Use a selector.`,
+        "MULTIPLE_INTERSECTIONS"
+      );
     }
     return points[0];
   }
@@ -644,7 +724,10 @@ export function applySelector(
     if ("index" in selector) {
       const idx = selector.index;
       if (idx < 0 || idx >= points.length) {
-        throw new Error(`Intersection index ${idx} out of range (${points.length} results): ${label}`);
+        throw new GeometryError(
+          `intersection index ${idx} out of range (${points.length} results): ${label}`,
+          "INTERSECTION_INDEX_OUT_OF_RANGE"
+        );
       }
       return points[idx];
     }
@@ -662,7 +745,10 @@ export function applySelector(
     }
   }
 
-  throw new Error(`Invalid intersection selector: ${JSON.stringify(selector)}`);
+  throw new GeometryError(
+    `invalid intersection selector: ${JSON.stringify(selector)}`,
+    "INVALID_INTERSECTION_SELECTOR"
+  );
 }
 
 function distSq(a: Point2D, b: Point2D): number {
@@ -679,6 +765,13 @@ export function computeIntersections(obj1: any, obj2: any, label: string): Point
 
   // Normalize order for symmetric pairs
   const pair = [t1, t2].sort().join("-");
+
+  if (!supportedPairSet.has(pair)) {
+    throw new GeometryError(
+      `intersection between "${t1}" and "${t2}" is not supported by the RelGeo DSL 0.5 geometry boundary (${label})`,
+      "UNSUPPORTED_FEATURE"
+    );
+  }
 
   switch (pair) {
     case "line-line":
@@ -744,6 +837,9 @@ export function computeIntersections(obj1: any, obj2: any, label: string): Point
       return intersectPathLikes(obj1, obj2);
 
     default:
-      throw new Error(`UNSUPPORTED_FEATURE: intersection between "${t1}" and "${t2}" is not supported in v0.3`);
+      throw new GeometryError(
+        `intersection between "${t1}" and "${t2}" is not supported by the RelGeo DSL 0.5 geometry boundary (${label})`,
+        "UNSUPPORTED_FEATURE"
+      );
   }
 }

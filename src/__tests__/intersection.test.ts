@@ -8,7 +8,10 @@ import {
   intersectArcs,
   computeIntersections,
   applySelector,
+  SUPPORTED_INTERSECTION_PAIRS,
+  SUPPORTED_INTERSECTION_SELECTORS,
 } from "../intersection";
+import { GeometryError } from "../error";
 
 // ─────────────────────────────────────────────
 // Math kernel tests
@@ -243,6 +246,22 @@ describe("applySelector()", () => {
     const result = applySelector(pts, { farthest: ref }, "test");
     expect(result).toEqual(pts[2]);
   });
+
+  it("publishes the supported selector contract", () => {
+    expect(SUPPORTED_INTERSECTION_SELECTORS).toEqual([
+      "first",
+      "last",
+      "index",
+      "nearest",
+      "farthest",
+    ]);
+  });
+
+  it("uses stable GeometryError codes for selector failures", () => {
+    expect(() => applySelector([], "first", "empty")).toThrow("NO_INTERSECTION");
+    expect(() => applySelector(pts, undefined, "multiple")).toThrow("MULTIPLE_INTERSECTIONS");
+    expect(() => applySelector(pts, { index: 10 }, "index")).toThrow("INTERSECTION_INDEX_OUT_OF_RANGE");
+  });
 });
 
 // ─────────────────────────────────────────────
@@ -250,6 +269,13 @@ describe("applySelector()", () => {
 // ─────────────────────────────────────────────
 
 describe("computeIntersections() dispatch", () => {
+  it("publishes the canonical supported pair contract", () => {
+    expect(SUPPORTED_INTERSECTION_PAIRS).toContain("line-line");
+    expect(SUPPORTED_INTERSECTION_PAIRS).toContain("circle-line");
+    expect(SUPPORTED_INTERSECTION_PAIRS).toContain("path-polygon");
+    expect(SUPPORTED_INTERSECTION_PAIRS).not.toContain("circle-text");
+  });
+
   it("line-line", () => {
     const l1 = { id: "l1", type: "line", x1: 0, y1: 5, x2: 10, y2: 5 };
     const l2 = { id: "l2", type: "line", x1: 5, y1: 0, x2: 5, y2: 10 };
@@ -340,5 +366,13 @@ describe("computeIntersections() dispatch", () => {
     const t = { id: "t", type: "text", x: 0, y: 0, width: 10, height: 10, content: "hi" };
     const c = { id: "c", type: "circle", cx: 0, cy: 0, radius: 5 };
     expect(() => computeIntersections(t, c, "test")).toThrow("UNSUPPORTED_FEATURE");
+    expect(() => computeIntersections(t, c, "test")).not.toThrow("v0.3");
+  });
+
+  it("rejects invalid low-level intersection inputs with a stable code", () => {
+    const line = { id: "l", type: "line" as const, x1: 0, y1: 0, x2: 0, y2: 0 };
+    const circle = { id: "c", type: "circle" as const, cx: 0, cy: 0, radius: 5 };
+    expect(() => computeIntersections(line, circle, "degenerate")).toThrow("INVALID_INTERSECTION_INPUT");
+    expect(() => intersectLineCircle(line, circle)).toThrow(GeometryError);
   });
 });

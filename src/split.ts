@@ -9,6 +9,7 @@ import {
   type ResolvedQuadratic,
 } from "./types";
 import { isAngleOnSweep } from "./utils";
+import { GEOMETRY_TOLERANCES } from "./tolerance";
 
 export type SplitSupportedTarget =
   | ResolvedLine
@@ -36,9 +37,9 @@ type SegmentSplitCandidate = {
   splitPoint: Point2D;
 };
 
-const DEFAULT_TOLERANCE = 1e-6;
+const DEFAULT_TOLERANCE = GEOMETRY_TOLERANCES.splitDefault;
 const DEFAULT_CURVE_SAMPLES = 64;
-const SPLIT_EPS = 1e-9;
+const SPLIT_EPS = GEOMETRY_TOLERANCES.splitEndpoint;
 
 export function splitPathLikeByPoint(
   target: SplitSupportedTarget,

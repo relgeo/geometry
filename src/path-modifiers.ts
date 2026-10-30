@@ -1,5 +1,5 @@
 /**
- * Path Modifier Engine — RelGeo v0.3
+ * Path Modifier Engine — RelGeo DSL 0.5 compatibility line
  *
  * Handles:
  *   - Fillet: line-line corner replacement with an arc tangent to both lines
@@ -13,6 +13,7 @@
  */
 
 import { GeometryError } from "./error";
+import { GEOMETRY_TOLERANCES } from "./tolerance";
 
 import { Point2D } from "./types";
 
@@ -89,7 +90,7 @@ export function computeFillet(
   const interiorAngle = signedAngle(revPrevDir, nextDir); // range (-π, π]
   const halfInteriorAngle = Math.abs(interiorAngle) / 2;
 
-  if (halfInteriorAngle < 1e-9 || Math.abs(halfInteriorAngle - Math.PI / 2) < 1e-9 && Math.tan(halfInteriorAngle) === 0) {
+  if (halfInteriorAngle < GEOMETRY_TOLERANCES.modifier || Math.abs(halfInteriorAngle - Math.PI / 2) < GEOMETRY_TOLERANCES.modifier && Math.tan(halfInteriorAngle) === 0) {
     throw new GeometryError(
       `Fillet at corner "${cornerLabel}" is degenerate: segments are collinear or antiparallel`,
       "INVALID_CORNER_OPERATION"
@@ -263,13 +264,13 @@ export function applyCornerModifiers(
       const nextU = unit(nextDirRaw);
       const interiorAngle = signedAngle(revPrev, nextU);
       const halfInterior = Math.abs(interiorAngle) / 2;
-      if (Math.abs(halfInterior) < 1e-9) {
+      if (Math.abs(halfInterior) < GEOMETRY_TOLERANCES.modifier) {
         result.push(segs[i]);
         continue; // collinear, skip
       }
       const setback = radius / Math.tan(halfInterior);
 
-      if (setback > prevLen - 1e-9 || setback > nextLen - 1e-9) {
+      if (setback > prevLen - GEOMETRY_TOLERANCES.modifier || setback > nextLen - GEOMETRY_TOLERANCES.modifier) {
         throw new GeometryError(
           `Fillet radius ${radius} at corner "${cornerLabel}" exceeds available segment length`,
           "INVALID_CORNER_OPERATION"
@@ -304,7 +305,7 @@ export function applyCornerModifiers(
       (segs[nextIdx] as ResolvedLineSeg).y1 = fillet.p2.y;
     } else if ("chamfer" in modifier) {
       const distance = modifier.chamfer;
-      if (distance > prevLen - 1e-9 || distance > nextLen - 1e-9) {
+      if (distance > prevLen - GEOMETRY_TOLERANCES.modifier || distance > nextLen - GEOMETRY_TOLERANCES.modifier) {
         throw new GeometryError(
           `Chamfer distance ${distance} at corner "${cornerLabel}" exceeds available segment length`,
           "INVALID_CORNER_OPERATION"
@@ -396,7 +397,7 @@ export function offsetPolyline(
     const b = points[(i + 1) % n];
     const d = vec(a, b);
     const l = len(d);
-    if (l < 1e-9) continue;
+    if (l < GEOMETRY_TOLERANCES.modifier) continue;
     // Normal perpendicular (CCW rotation)
     const normal = unit({ x: -d.y, y: d.x });
     const offset = scale(normal, signedDist);
@@ -443,7 +444,7 @@ function lineLineIntersectUnbounded(
   const d2 = vec(p3, p4);
   const denom = cross2D(d1, d2);
 
-  if (Math.abs(denom) < 1e-9) {
+  if (Math.abs(denom) < GEOMETRY_TOLERANCES.modifier) {
     // Parallel segments: just use midpoint of p2 and p3
     return { x: (p2.x + p3.x) / 2, y: (p2.y + p3.y) / 2 };
   }
@@ -494,10 +495,11 @@ function segmentsIntersect(p1: Point2D, p2: Point2D, p3: Point2D, p4: Point2D): 
   const d2 = vec(p3, p4);
   const denom = cross2D(d1, d2);
 
-  if (Math.abs(denom) < 1e-9) return false; // parallel
+  if (Math.abs(denom) < GEOMETRY_TOLERANCES.modifier) return false; // parallel
 
   const t = cross2D(vec(p1, p3), d2) / denom;
   const u = cross2D(vec(p1, p3), d1) / denom;
 
-  return t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9;
+  return t > GEOMETRY_TOLERANCES.modifier && t < 1 - GEOMETRY_TOLERANCES.modifier &&
+    u > GEOMETRY_TOLERANCES.modifier && u < 1 - GEOMETRY_TOLERANCES.modifier;
 }

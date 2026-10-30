@@ -6,6 +6,15 @@ Package ini menampung operasi geometri analitik yang dipakai oleh runtime dan re
 
 Package ini bukan source of truth bahasa, tetapi ia menopang implementasi kontrak aktif repo saat ini, yaitu `RelGeo DSL v0.5`.
 
+Boundary contract yang tersedia dari package:
+
+* `SUPPORTED_INTERSECTION_PAIRS` dan `SUPPORTED_INTERSECTION_SELECTORS` adalah
+  daftar low-level intersection yang didukung dan selector yang deterministik;
+* `GEOMETRY_TOLERANCES` mendokumentasikan batas numerik internal package, bukan
+  universal epsilon DSL atau janji precision lintas runtime;
+* `normalizeClosedShape` mengembalikan outer ring canonical counter-clockwise,
+  hole ring clockwise, dan menolak ring degenerat dengan `GeometryError`.
+
 Metadata package `@relgeo/geometry` saat ini adalah `0.5.0`, pada compatibility line RelGeo DSL `v0.5`. Patch release dapat bergerak mandiri; perubahan kontrak bahasa akan dinaikkan bersama ke line berikutnya.
 
 Status packaging saat ini:

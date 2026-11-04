@@ -3,6 +3,7 @@ import {
   GEOMETRY_TOLERANCES,
   normalizeClosedShape,
   signedRingArea,
+  ClipperBooleanEngine,
 } from "..";
 
 function polygon(id: string, points: { x: number; y: number }[], holes?: unknown[]) {
@@ -63,6 +64,81 @@ describe("normalizeClosedShape()", () => {
     ]))).toThrow("INVALID_CLOSED_SHAPE");
   });
 
+  it("rejects non-finite and non-positive closed-shape dimensions", () => {
+    expect(() => normalizeClosedShape(null as any)).toThrow("INVALID_CLOSED_SHAPE");
+    expect(() => normalizeClosedShape(polygon("nan", [
+      { x: Number.NaN, y: 0 },
+      { x: 1, y: 0 },
+      { x: 0, y: 1 },
+    ]))).toThrow("INVALID_CLOSED_SHAPE");
+    expect(() => normalizeClosedShape({
+      id: "circle",
+      type: "circle",
+      cx: 0,
+      cy: 0,
+      radius: 0,
+    } as any)).toThrow("INVALID_CLOSED_SHAPE");
+    expect(() => normalizeClosedShape({
+      id: "rect",
+      type: "rect",
+      x: 0,
+      y: 0,
+      width: -1,
+      height: 2,
+    } as any)).toThrow("INVALID_CLOSED_SHAPE");
+    expect(() => normalizeClosedShape({
+      id: "polygon",
+      type: "polygon",
+      points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }],
+      holes: null,
+    } as any)).toThrow("INVALID_CLOSED_SHAPE");
+  });
+
+  it("canonicalizes hole order as well as ring winding", () => {
+    const outer = [
+      { x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }, { x: 0, y: 20 },
+    ];
+    const nearHole = [
+      { x: 2, y: 2 }, { x: 2, y: 5 }, { x: 5, y: 5 }, { x: 5, y: 2 },
+    ];
+    const farHole = [
+      { x: 12, y: 12 }, { x: 12, y: 16 }, { x: 16, y: 16 }, { x: 16, y: 12 },
+    ];
+    const first = normalizeClosedShape(polygon("first", outer, [
+      { segments: farHole.map((point, index) => ({
+        type: "line",
+        x1: point.x,
+        y1: point.y,
+        x2: farHole[(index + 1) % farHole.length].x,
+        y2: farHole[(index + 1) % farHole.length].y,
+      })) },
+      { segments: nearHole.map((point, index) => ({
+        type: "line",
+        x1: point.x,
+        y1: point.y,
+        x2: nearHole[(index + 1) % nearHole.length].x,
+        y2: nearHole[(index + 1) % nearHole.length].y,
+      })) },
+    ]));
+    const second = normalizeClosedShape(polygon("second", outer, [
+      { segments: nearHole.map((point, index) => ({
+        type: "line",
+        x1: point.x,
+        y1: point.y,
+        x2: nearHole[(index + 1) % nearHole.length].x,
+        y2: nearHole[(index + 1) % nearHole.length].y,
+      })) },
+      { segments: farHole.map((point, index) => ({
+        type: "line",
+        x1: point.x,
+        y1: point.y,
+        x2: farHole[(index + 1) % farHole.length].x,
+        y2: farHole[(index + 1) % farHole.length].y,
+      })) },
+    ]));
+    expect(first).toEqual(second);
+  });
+
   it("reports missing clone targets with a stable package error", () => {
     expect(() => normalizeClosedShape({
       id: "clone",
@@ -75,5 +151,53 @@ describe("normalizeClosedShape()", () => {
   it("keeps cleanup tolerance explicit and bounded", () => {
     expect(GEOMETRY_TOLERANCES.pathCleanup).toBe(1e-7);
     expect(GEOMETRY_TOLERANCES.intersection).toBe(1e-9);
+  });
+});
+
+describe("ClipperBooleanEngine() input/output contract", () => {
+  const engine = new ClipperBooleanEngine();
+  const left = {
+    outer: [
+      { x: 0, y: 0 }, { x: 0, y: 10 }, { x: 10, y: 10 }, { x: 10, y: 0 },
+    ],
+  };
+  const right = {
+    outer: [
+      { x: 5, y: 0 }, { x: 5, y: 10 }, { x: 15, y: 10 }, { x: 15, y: 0 },
+    ],
+  };
+
+  it("returns equivalent canonical results independent of operand winding/order", () => {
+    const first = engine.intersect([left, right]);
+    const second = engine.intersect([right, left]);
+    expect(first).toEqual(second);
+    expect(first).toHaveLength(1);
+    expect(signedRingArea(first[0].outer)).toBeGreaterThan(0);
+  });
+
+  it("preserves canonical holes through an intersect result", () => {
+    const withHole = {
+      outer: [
+        { x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }, { x: 0, y: 20 },
+      ],
+      holes: [[
+        { x: 5, y: 5 }, { x: 5, y: 15 }, { x: 15, y: 15 }, { x: 15, y: 5 },
+      ]],
+    };
+    const result = engine.intersect([withHole, {
+      outer: [
+        { x: -5, y: -5 }, { x: 25, y: -5 }, { x: 25, y: 25 }, { x: -5, y: 25 },
+      ],
+    }]);
+    expect(result).toHaveLength(1);
+    expect(result[0].holes).toHaveLength(1);
+    expect(signedRingArea(result[0].holes![0])).toBeLessThan(0);
+  });
+
+  it("rejects invalid direct engine inputs with the stable package code", () => {
+    expect(() => engine.intersect([null as any])).toThrow("INVALID_CLOSED_SHAPE");
+    expect(() => engine.intersect([{
+      outer: [{ x: Number.POSITIVE_INFINITY, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }],
+    }])).toThrow("INVALID_CLOSED_SHAPE");
   });
 });

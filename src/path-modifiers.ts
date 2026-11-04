@@ -29,6 +29,18 @@ function len(v: Point2D): number {
   return Math.hypot(v.x, v.y);
 }
 
+function assertFinitePoint(point: Point2D, label: string, code: "INVALID_CORNER_OPERATION" | "INVALID_OFFSET" | "SELF_INTERSECTING_PATH"): void {
+  if (!point || typeof point !== "object" || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+    throw new GeometryError(`${label} must contain finite coordinates`, code);
+  }
+}
+
+function assertFiniteNumber(value: number, label: string, code: "INVALID_CORNER_OPERATION" | "INVALID_OFFSET"): void {
+  if (!Number.isFinite(value)) {
+    throw new GeometryError(`${label} must be finite`, code);
+  }
+}
+
 function unit(v: Point2D): Point2D {
   const l = len(v) || 1;
   return { x: v.x / l, y: v.y / l };
@@ -76,6 +88,16 @@ export function computeFillet(
   sweep: 0 | 1;
   largeArc: 0 | 1;
 } {
+  assertFinitePoint(cornerPoint, "Fillet corner", "INVALID_CORNER_OPERATION");
+  assertFinitePoint(prevDir, "Fillet previous direction", "INVALID_CORNER_OPERATION");
+  assertFinitePoint(nextDir, "Fillet next direction", "INVALID_CORNER_OPERATION");
+  assertFiniteNumber(radius, "Fillet radius", "INVALID_CORNER_OPERATION");
+  if (len(prevDir) <= GEOMETRY_TOLERANCES.modifier || len(nextDir) <= GEOMETRY_TOLERANCES.modifier) {
+    throw new GeometryError(
+      `Fillet directions must be non-zero at corner "${cornerLabel}"`,
+      "INVALID_CORNER_OPERATION"
+    );
+  }
   if (radius <= 0) {
     throw new GeometryError(
       `Fillet radius must be positive at corner "${cornerLabel}"`,
@@ -154,6 +176,16 @@ export function computeChamfer(
   p1: Point2D;  // chamfer start (on incoming seg)
   p2: Point2D;  // chamfer end (on outgoing seg)
 } {
+  assertFinitePoint(cornerPoint, "Chamfer corner", "INVALID_CORNER_OPERATION");
+  assertFinitePoint(prevDir, "Chamfer previous direction", "INVALID_CORNER_OPERATION");
+  assertFinitePoint(nextDir, "Chamfer next direction", "INVALID_CORNER_OPERATION");
+  assertFiniteNumber(distance, "Chamfer distance", "INVALID_CORNER_OPERATION");
+  if (len(prevDir) <= GEOMETRY_TOLERANCES.modifier || len(nextDir) <= GEOMETRY_TOLERANCES.modifier) {
+    throw new GeometryError(
+      `Chamfer directions must be non-zero at corner "${cornerLabel}"`,
+      "INVALID_CORNER_OPERATION"
+    );
+  }
   if (distance <= 0) {
     throw new GeometryError(
       `Chamfer distance must be positive at corner "${cornerLabel}"`,
@@ -359,13 +391,21 @@ export function offsetPolyline(
   side: OffsetSide,
   closed: boolean
 ): Point2D[] {
-  if (distance === 0) return points.map(p => ({ ...p }));
-  if (points.length < 2) {
+  if (!Array.isArray(points) || points.length < 2) {
     throw new GeometryError(
       `Polyline requires at least 2 points for offset`,
       "INVALID_OFFSET"
     );
   }
+  points.forEach((point, index) => assertFinitePoint(point, `Offset point ${index}`, "INVALID_OFFSET"));
+  assertFiniteNumber(distance, "Offset distance", "INVALID_OFFSET");
+  if (distance < 0) {
+    throw new GeometryError("Offset distance must not be negative", "INVALID_OFFSET");
+  }
+  if (!["left", "right", "inside", "outside"].includes(side)) {
+    throw new GeometryError(`Unsupported offset side: ${side}`, "INVALID_OFFSET");
+  }
+  if (distance === 0) return points.map(p => ({ ...p }));
 
   // Determine the signed offset distance
   // "left" = positive (CCW side), "right" = negative (CW side)
@@ -470,6 +510,10 @@ function signedArea(points: Point2D[]): number {
  * Throws GeometryError if any two non-adjacent segments cross.
  */
 export function validateNoSelfIntersection(points: Point2D[], closed: boolean): void {
+  if (!Array.isArray(points)) {
+    throw new GeometryError("Path must be an array of points", "SELF_INTERSECTING_PATH");
+  }
+  points.forEach((point, index) => assertFinitePoint(point, `Path point ${index}`, "SELF_INTERSECTING_PATH"));
   const n = points.length;
   const segCount = closed ? n : n - 1;
 

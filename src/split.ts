@@ -41,6 +41,25 @@ const DEFAULT_TOLERANCE = GEOMETRY_TOLERANCES.splitDefault;
 const DEFAULT_CURVE_SAMPLES = 64;
 const SPLIT_EPS = GEOMETRY_TOLERANCES.splitEndpoint;
 
+function assertFiniteSplitPoint(point: Point2D, label: string, code: "INVALID_SPLIT_TARGET" | "SPLIT_POINT_OFF_TARGET"): void {
+  if (!point || typeof point !== "object" || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+    throw new GeometryError(`${label} must contain finite coordinates`, code);
+  }
+}
+
+function validateSplitSegment(segment: PathResolvedSegment, index: number): void {
+  const values = segment.type === "line"
+    ? [segment.x1, segment.y1, segment.x2, segment.y2]
+    : segment.type === "arc"
+      ? [segment.x1, segment.y1, segment.x2, segment.y2, segment.cx, segment.cy, segment.radius]
+      : segment.type === "quadratic"
+        ? [segment.x1, segment.y1, segment.cpx, segment.cpy, segment.x2, segment.y2]
+        : [segment.x1, segment.y1, segment.cp1x, segment.cp1y, segment.cp2x, segment.cp2y, segment.x2, segment.y2];
+  if (values.some((value) => !Number.isFinite(value))) {
+    throw new GeometryError(`split segment ${index} contains non-finite geometry`, "INVALID_SPLIT_TARGET");
+  }
+}
+
 export function splitPathLikeByPoint(
   target: SplitSupportedTarget,
   point: Point2D,
@@ -49,6 +68,17 @@ export function splitPathLikeByPoint(
   const tolerance = options.tolerance ?? DEFAULT_TOLERANCE;
   const curveSamples = options.curveSamples ?? DEFAULT_CURVE_SAMPLES;
 
+  if (!target || typeof target !== "object" || typeof (target as any).type !== "string") {
+    throw new GeometryError("split target must be a typed geometry object", "INVALID_SPLIT_TARGET");
+  }
+  assertFiniteSplitPoint(point, "split point", "SPLIT_POINT_OFF_TARGET");
+  if (!Number.isFinite(tolerance) || tolerance < 0) {
+    throw new GeometryError("split tolerance must be finite and non-negative", "INVALID_SPLIT_TARGET");
+  }
+  if (!Number.isInteger(curveSamples) || curveSamples < 8) {
+    throw new GeometryError("curveSamples must be an integer greater than or equal to 8", "INVALID_SPLIT_TARGET");
+  }
+
   const segments = normalizeOpenSegments(target);
   if (segments.length === 0) {
     throw new GeometryError(
@@ -56,6 +86,7 @@ export function splitPathLikeByPoint(
       "INVALID_SPLIT_TARGET"
     );
   }
+  segments.forEach(validateSplitSegment);
 
   let best:
     | (SegmentSplitCandidate & {

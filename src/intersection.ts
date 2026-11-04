@@ -115,6 +115,39 @@ function validateCircle(circle: ResolvedCircle): void {
   }
 }
 
+function validateArc(arc: ArcLike, label = "arc"): void {
+  for (const [value, name] of [
+    [arc.x1, `${label}.x1`],
+    [arc.y1, `${label}.y1`],
+    [arc.x2, `${label}.x2`],
+    [arc.y2, `${label}.y2`],
+    [arc.cx, `${label}.cx`],
+    [arc.cy, `${label}.cy`],
+    [arc.radius, `${label}.radius`],
+    [arc.startAngle, `${label}.startAngle`],
+    [arc.endAngle, `${label}.endAngle`],
+  ] as const) {
+    if (value !== undefined) assertFinite(value, name);
+  }
+  if (arc.cx === undefined || arc.cy === undefined || arc.radius === undefined) {
+    throw new GeometryError(`${label} must expose center and radius`, "INVALID_INTERSECTION_INPUT");
+  }
+  if (arc.radius <= TOLERANCE) {
+    throw new GeometryError(`${label} radius must be positive`, "INVALID_INTERSECTION_INPUT");
+  }
+  const hasAngles = arc.startAngle !== undefined && arc.endAngle !== undefined;
+  const hasEndpoints = arc.x1 !== undefined && arc.y1 !== undefined && arc.x2 !== undefined && arc.y2 !== undefined;
+  if (!hasAngles && !hasEndpoints) {
+    throw new GeometryError(`${label} must expose angles or endpoints`, "INVALID_INTERSECTION_INPUT");
+  }
+  if (arc.sweep !== undefined && arc.sweep !== 0 && arc.sweep !== 1) {
+    throw new GeometryError(`${label}.sweep must be 0 or 1`, "INVALID_INTERSECTION_INPUT");
+  }
+  if (arc.largeArc !== undefined && arc.largeArc !== 0 && arc.largeArc !== 1) {
+    throw new GeometryError(`${label}.largeArc must be 0 or 1`, "INVALID_INTERSECTION_INPUT");
+  }
+}
+
 function eq(a: number, b: number): boolean {
   return Math.abs(a - b) < TOLERANCE;
 }
@@ -133,6 +166,59 @@ function dedupePoints(pts: Point2D[]): Point2D[] {
     }
   }
   return result;
+}
+
+function validateSegmentLike(segment: SegmentLike, label: string): void {
+  if (!segment || typeof segment !== "object") {
+    throw new GeometryError(`${label} is not a segment`, "INVALID_INTERSECTION_INPUT");
+  }
+  if (segment.type === "line") {
+    validateLine(segment);
+    return;
+  }
+  if (segment.type === "arc") {
+    validateArc(segment, label);
+    return;
+  }
+  const values = segment.type === "quadratic"
+    ? [segment.x1, segment.y1, segment.cpx, segment.cpy, segment.x2, segment.y2]
+    : [segment.x1, segment.y1, segment.cp1x, segment.cp1y, segment.cp2x, segment.cp2y, segment.x2, segment.y2];
+  values.forEach((value, index) => assertFinite(value, `${label}[${index}]`));
+  if (Math.hypot(segment.x2 - segment.x1, segment.y2 - segment.y1) <= TOLERANCE) {
+    throw new GeometryError(`${label} has zero-length endpoints`, "INVALID_INTERSECTION_INPUT");
+  }
+}
+
+function validatePathLikeObject(obj: any, label: string): void {
+  if (obj.type === "rect") {
+    for (const [value, name] of [
+      [obj.x, `${label}.x`], [obj.y, `${label}.y`],
+      [obj.width, `${label}.width`], [obj.height, `${label}.height`],
+    ] as const) assertFinite(value, name);
+    if (obj.width <= TOLERANCE || obj.height <= TOLERANCE) {
+      throw new GeometryError(`${label} width and height must be positive`, "INVALID_INTERSECTION_INPUT");
+    }
+    return;
+  }
+
+  const segments = Array.isArray(obj.segments) && obj.segments.length > 0 ? obj.segments : undefined;
+  const points = Array.isArray(obj.points) ? obj.points : undefined;
+  if (!segments && !points) {
+    throw new GeometryError(`${label} must expose segments or points`, "INVALID_INTERSECTION_INPUT");
+  }
+  if (segments) {
+    if (segments.length === 0) {
+      throw new GeometryError(`${label} must expose at least one segment`, "INVALID_INTERSECTION_INPUT");
+    }
+    segments.forEach((segment: SegmentLike, index: number) => validateSegmentLike(segment, `${label}.segments[${index}]`));
+  } else if (!points || points.length < (obj.type === "polygon" ? 3 : 2)) {
+    throw new GeometryError(`${label} does not expose enough points`, "INVALID_INTERSECTION_INPUT");
+  } else {
+    points.forEach((point: Point2D, index: number) => {
+      assertFinite(point.x, `${label}.points[${index}].x`);
+      assertFinite(point.y, `${label}.points[${index}].y`);
+    });
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -341,8 +427,12 @@ export function intersectLineArc(
   line: LineLike,
   arc: ArcLike
 ): Point2D[] {
+  validateLine(line);
+  validateArc(arc);
   const analyticArc = toAnalyticArc(arc);
-  if (!analyticArc || !arcHasCx(analyticArc)) return [];
+  if (!analyticArc || !arcHasCx(analyticArc)) {
+    throw new GeometryError("arc cannot be converted to analytic form", "INVALID_INTERSECTION_INPUT");
+  }
   const circle: ResolvedCircle = {
     id: "",
     type: "circle",
@@ -362,8 +452,12 @@ export function intersectCircleArc(
   circle: ResolvedCircle,
   arc: ArcLike
 ): Point2D[] {
+  validateCircle(circle);
+  validateArc(arc);
   const analyticArc = toAnalyticArc(arc);
-  if (!analyticArc || !arcHasCx(analyticArc)) return [];
+  if (!analyticArc || !arcHasCx(analyticArc)) {
+    throw new GeometryError("arc cannot be converted to analytic form", "INVALID_INTERSECTION_INPUT");
+  }
   const arcCircle: ResolvedCircle = {
     id: "",
     type: "circle",
@@ -383,9 +477,13 @@ export function intersectArcs(
   a1: ArcLike,
   a2: ArcLike
 ): Point2D[] {
+  validateArc(a1, "arc1");
+  validateArc(a2, "arc2");
   const arc1 = toAnalyticArc(a1);
   const arc2 = toAnalyticArc(a2);
-  if (!arc1 || !arc2 || !arcHasCx(arc1) || !arcHasCx(arc2)) return [];
+  if (!arc1 || !arc2 || !arcHasCx(arc1) || !arcHasCx(arc2)) {
+    throw new GeometryError("arc cannot be converted to analytic form", "INVALID_INTERSECTION_INPUT");
+  }
 
   const c1: ResolvedCircle = { id: "", type: "circle", cx: arc1.cx, cy: arc1.cy, radius: arc1.radius! };
   const c2: ResolvedCircle = { id: "", type: "circle", cx: arc2.cx, cy: arc2.cy, radius: arc2.radius! };
@@ -517,7 +615,7 @@ function objectToPathSegments(obj: any): SegmentLike[] | null {
   }
   if (obj.type === "path") {
     const allSegments: SegmentLike[] = [];
-    if (Array.isArray(obj.segments)) {
+    if (Array.isArray(obj.segments) && obj.segments.length > 0) {
       allSegments.push(...(obj.segments as SegmentLike[]));
     } else if (Array.isArray(obj.points) && obj.points.length > 1) {
       for (let i = 1; i < obj.points.length; i++) {
@@ -646,6 +744,8 @@ function intersectLineWithPathLike(
   line: ResolvedLine,
   obj: any
 ): Point2D[] {
+  validateLine(line);
+  validatePathLikeObject(obj, `intersection.${obj.type}`);
   const segments = objectToPathSegments(obj) ?? [];
   return dedupePoints(
     segments.flatMap((segment) => intersectLineWithSegmentLike(line, segment))
@@ -656,6 +756,8 @@ function intersectCircleWithPathLike(
   circle: ResolvedCircle,
   obj: any
 ): Point2D[] {
+  validateCircle(circle);
+  validatePathLikeObject(obj, `intersection.${obj.type}`);
   const segments = objectToPathSegments(obj) ?? [];
   return dedupePoints(
     segments.flatMap((segment) => intersectCircleWithSegmentLike(circle, segment))
@@ -666,6 +768,8 @@ function intersectArcWithPathLike(
   arc: ArcLike,
   obj: any
 ): Point2D[] {
+  validateArc(arc);
+  validatePathLikeObject(obj, `intersection.${obj.type}`);
   const segments = objectToPathSegments(obj) ?? [];
   return dedupePoints(
     segments.flatMap((segment) => intersectArcWithSegmentLike(arc, segment))
@@ -676,6 +780,8 @@ function intersectPathLikes(
   obj1: ResolvedPath | ResolvedPolygon,
   obj2: ResolvedPath | ResolvedPolygon
 ): Point2D[] {
+  validatePathLikeObject(obj1, "intersection.left");
+  validatePathLikeObject(obj2, "intersection.right");
   const segments1 = objectToPathSegments(obj1) ?? [];
   const segments2 = objectToPathSegments(obj2) ?? [];
   const result: Point2D[] = [];
@@ -703,6 +809,13 @@ export function applySelector(
   selector: IntersectionSelector | undefined,
   label: string
 ): Point2D {
+  if (!Array.isArray(points)) {
+    throw new GeometryError("intersection results must be an array", "INVALID_INTERSECTION_INPUT");
+  }
+  points.forEach((point, index) => {
+    assertFinite(point.x, `${label}.points[${index}].x`);
+    assertFinite(point.y, `${label}.points[${index}].y`);
+  });
   if (points.length === 0) {
     throw new GeometryError(`no intersection: ${label}`, "NO_INTERSECTION");
   }
@@ -723,6 +836,12 @@ export function applySelector(
   if (typeof selector === "object") {
     if ("index" in selector) {
       const idx = selector.index;
+      if (!Number.isInteger(idx)) {
+        throw new GeometryError(
+          `intersection index must be an integer: ${idx}: ${label}`,
+          "INVALID_INTERSECTION_SELECTOR"
+        );
+      }
       if (idx < 0 || idx >= points.length) {
         throw new GeometryError(
           `intersection index ${idx} out of range (${points.length} results): ${label}`,
@@ -733,12 +852,16 @@ export function applySelector(
     }
     if ("nearest" in selector) {
       const ref = selector.nearest;
+      assertFinite(ref.x, `${label}.nearest.x`);
+      assertFinite(ref.y, `${label}.nearest.y`);
       return points.reduce((best, p) => {
         return distSq(p, ref) < distSq(best, ref) ? p : best;
       });
     }
     if ("farthest" in selector) {
       const ref = selector.farthest;
+      assertFinite(ref.x, `${label}.farthest.x`);
+      assertFinite(ref.y, `${label}.farthest.y`);
       return points.reduce((best, p) => {
         return distSq(p, ref) > distSq(best, ref) ? p : best;
       });
@@ -760,8 +883,14 @@ function distSq(a: Point2D, b: Point2D): number {
 // ─────────────────────────────────────────────
 
 export function computeIntersections(obj1: any, obj2: any, label: string): Point2D[] {
+  if (!obj1 || !obj2 || typeof obj1 !== "object" || typeof obj2 !== "object") {
+    throw new GeometryError(`intersection operands must be objects (${label})`, "INVALID_INTERSECTION_INPUT");
+  }
   const t1 = obj1.type as string;
   const t2 = obj2.type as string;
+  if (typeof t1 !== "string" || typeof t2 !== "string") {
+    throw new GeometryError(`intersection operands must have a type (${label})`, "INVALID_INTERSECTION_INPUT");
+  }
 
   // Normalize order for symmetric pairs
   const pair = [t1, t2].sort().join("-");
@@ -772,6 +901,15 @@ export function computeIntersections(obj1: any, obj2: any, label: string): Point
       "UNSUPPORTED_FEATURE"
     );
   }
+
+  if (t1 === "line") validateLine(obj1);
+  if (t2 === "line") validateLine(obj2);
+  if (t1 === "circle") validateCircle(obj1);
+  if (t2 === "circle") validateCircle(obj2);
+  if (t1 === "arc") validateArc(obj1, "left/right arc");
+  if (t2 === "arc") validateArc(obj2, "left/right arc");
+  if (t1 === "path" || t1 === "polygon" || t1 === "rect") validatePathLikeObject(obj1, "left operand");
+  if (t2 === "path" || t2 === "polygon" || t2 === "rect") validatePathLikeObject(obj2, "right operand");
 
   switch (pair) {
     case "line-line":

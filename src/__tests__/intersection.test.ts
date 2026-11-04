@@ -12,6 +12,7 @@ import {
   SUPPORTED_INTERSECTION_SELECTORS,
 } from "../intersection";
 import { GeometryError } from "../error";
+import { geometryContractFixture, selectorContractFixture } from "./geometry-contract.fixture";
 
 // ─────────────────────────────────────────────
 // Math kernel tests
@@ -374,5 +375,74 @@ describe("computeIntersections() dispatch", () => {
     const circle = { id: "c", type: "circle" as const, cx: 0, cy: 0, radius: 5 };
     expect(() => computeIntersections(line, circle, "degenerate")).toThrow("INVALID_INTERSECTION_INPUT");
     expect(() => intersectLineCircle(line, circle)).toThrow(GeometryError);
+  });
+
+  it("rejects malformed arcs and path-like inputs instead of coercing them to empty", () => {
+    const line = { id: "l", type: "line" as const, x1: -20, y1: 0, x2: 20, y2: 0 };
+    expect(() => computeIntersections(line, {
+      id: "arc",
+      type: "arc",
+      cx: 0,
+      cy: 0,
+      radius: 10,
+      startAngle: 0,
+    }, "malformed-arc")).toThrow("INVALID_INTERSECTION_INPUT");
+    expect(() => computeIntersections(line, {
+      id: "path",
+      type: "path",
+      points: [{ x: Number.NaN, y: 0 }, { x: 1, y: 1 }],
+    }, "non-finite-path")).toThrow("INVALID_INTERSECTION_INPUT");
+    expect(() => computeIntersections(null, line, "null-operand")).toThrow("INVALID_INTERSECTION_INPUT");
+  });
+
+  it("rejects non-finite selector references with a stable code", () => {
+    expect(() => applySelector(
+      [{ x: 0, y: 0 }, { x: 1, y: 0 }],
+      { nearest: { x: Number.NaN, y: 0 } },
+      "non-finite-selector",
+    )).toThrow("INVALID_INTERSECTION_INPUT");
+    expect(() => applySelector(
+      [{ x: 0, y: 0 }],
+      { invalid: true } as any,
+      "invalid-selector",
+    )).toThrow("INVALID_INTERSECTION_SELECTOR");
+    expect(() => applySelector(
+      [{ x: 0, y: 0 }],
+      { index: 0.5 },
+      "fractional-index",
+    )).toThrow("INVALID_INTERSECTION_SELECTOR");
+  });
+});
+
+describe("deterministic geometry contract fixture", () => {
+  it("covers success, empty, multiple, unsupported, invalid, and boundary cases", () => {
+    for (const testCase of geometryContractFixture) {
+      if (testCase.expectedError) {
+        expect(() => computeIntersections(testCase.left, testCase.right, testCase.id)).toThrow(testCase.expectedError);
+        continue;
+      }
+
+      expect(computeIntersections(testCase.left, testCase.right, testCase.id)).toEqual(testCase.expectedPoints);
+    }
+  });
+
+  it("keeps selector outcomes deterministic for the canonical ordered points", () => {
+    const single = geometryContractFixture[0];
+    const multiple = geometryContractFixture[1];
+    const empty = geometryContractFixture[2];
+    const singlePoints = computeIntersections(single.left, single.right, single.id);
+    const multiplePoints = computeIntersections(multiple.left, multiple.right, multiple.id);
+    const emptyPoints = computeIntersections(empty.left, empty.right, empty.id);
+
+    for (const selectorCase of selectorContractFixture) {
+      const points = selectorCase.id === "implicit-single" ? singlePoints
+        : selectorCase.id === "implicit-empty-rejected" ? emptyPoints
+          : multiplePoints;
+      if (selectorCase.expectedError) {
+        expect(() => applySelector(points, selectorCase.selector, selectorCase.id)).toThrow(selectorCase.expectedError);
+      } else {
+        expect(applySelector(points, selectorCase.selector, selectorCase.id)).toEqual(selectorCase.expectedPoint);
+      }
+    }
   });
 });

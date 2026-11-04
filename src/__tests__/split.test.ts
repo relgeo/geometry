@@ -164,4 +164,18 @@ describe("splitPathLikeByPoint()", () => {
       )
     ).toThrow("SPLIT_POINT_OFF_TARGET");
   });
+
+  it("rejects non-finite split inputs and invalid tolerance", () => {
+    const line = {
+      id: "L",
+      type: "line" as const,
+      x1: 0,
+      y1: 0,
+      x2: 10,
+      y2: 0,
+    };
+    expect(() => splitPathLikeByPoint(line, { x: Number.NaN, y: 0 })).toThrow("SPLIT_POINT_OFF_TARGET");
+    expect(() => splitPathLikeByPoint(line, { x: 4, y: 0 }, { tolerance: -1 })).toThrow("INVALID_SPLIT_TARGET");
+    expect(() => splitPathLikeByPoint({ ...line, x2: Number.NaN }, { x: 4, y: 0 })).toThrow("INVALID_SPLIT_TARGET");
+  });
 });

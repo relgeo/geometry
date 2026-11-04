@@ -42,6 +42,11 @@ describe("computeFillet()", () => {
   it("throws INVALID_CORNER_OPERATION for negative radius", () => {
     expect(() => computeFillet(cornerPoint, prevDir, nextDir, -3, "B")).toThrow("INVALID_CORNER_OPERATION");
   });
+
+  it("rejects non-finite or zero-length fillet inputs", () => {
+    expect(() => computeFillet(cornerPoint, prevDir, nextDir, Number.NaN, "B")).toThrow("INVALID_CORNER_OPERATION");
+    expect(() => computeFillet(cornerPoint, { x: 0, y: 0 }, nextDir, 3, "B")).toThrow("INVALID_CORNER_OPERATION");
+  });
 });
 
 // ─────────────────────────────────────────────
@@ -109,6 +114,12 @@ describe("offsetPolyline()", () => {
     expect(() => offsetPolyline([{ x: 0, y: 0 }], 5, "left", false)).toThrow("INVALID_OFFSET");
   });
 
+  it("rejects non-finite and negative offsets", () => {
+    expect(() => offsetPolyline([{ x: 0, y: 0 }, { x: 10, y: 0 }], Number.NaN, "left", false)).toThrow("INVALID_OFFSET");
+    expect(() => offsetPolyline([{ x: 0, y: 0 }, { x: 10, y: 0 }], -1, "left", false)).toThrow("INVALID_OFFSET");
+    expect(() => offsetPolyline([{ x: Number.NaN, y: 0 }, { x: 10, y: 0 }], 1, "left", false)).toThrow("INVALID_OFFSET");
+  });
+
   it("inside/outside: outside span is greater than inside span", () => {
     const square = [
       { x: 0, y: 0 }, { x: 10, y: 0 },
@@ -160,5 +171,9 @@ describe("validateNoSelfIntersection()", () => {
       { x: 10, y: 0 }, { x: 15, y: 3 },
     ];
     expect(() => validateNoSelfIntersection(path, false)).not.toThrow();
+  });
+
+  it("rejects non-finite path coordinates with a stable code", () => {
+    expect(() => validateNoSelfIntersection([{ x: Number.NaN, y: 0 }, { x: 1, y: 1 }], false)).toThrow("SELF_INTERSECTING_PATH");
   });
 });

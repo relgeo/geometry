@@ -92,6 +92,8 @@ export function normalizePolyWithHoles(
     normalizeRing(hole, "cw", `hole ring ${index}`)
   );
 
+  validateHoleTopology(normalizedOuter, normalizedHoles);
+
   // Hole order has no semantic meaning. Canonicalize it so equivalent inputs
   // produce the same downstream boolean/serialization order.
   normalizedHoles.sort(compareRings);
@@ -99,6 +101,94 @@ export function normalizePolyWithHoles(
     outer: normalizedOuter,
     holes: normalizedHoles.length > 0 ? normalizedHoles : undefined,
   };
+}
+
+function pointInRing(point: { x: number; y: number }, ring: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const current = ring[i];
+    const previous = ring[j];
+    const crosses = ((current.y > point.y) !== (previous.y > point.y))
+      && point.x < (previous.x - current.x) * (point.y - current.y) / (previous.y - current.y) + current.x;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+function pointOnRingBoundary(point: { x: number; y: number }, ring: { x: number; y: number }[]): boolean {
+  const tolerance = GEOMETRY_TOLERANCES.pathCleanup;
+  for (let i = 0; i < ring.length; i++) {
+    const start = ring[i];
+    const end = ring[(i + 1) % ring.length];
+    const cross = (point.y - start.y) * (end.x - start.x) - (point.x - start.x) * (end.y - start.y);
+    if (Math.abs(cross) > tolerance) continue;
+    const dot = (point.x - start.x) * (end.x - start.x) + (point.y - start.y) * (end.y - start.y);
+    const lengthSquared = (end.x - start.x) ** 2 + (end.y - start.y) ** 2;
+    if (dot >= -tolerance && dot <= lengthSquared + tolerance) return true;
+  }
+  return false;
+}
+
+function ringsCross(left: { x: number; y: number }[], right: { x: number; y: number }[]): boolean {
+  const tolerance = GEOMETRY_TOLERANCES.pathCleanup;
+  const segmentsCross = (
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+    c: { x: number; y: number },
+    d: { x: number; y: number },
+  ): boolean => {
+    const determinant = (b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x);
+    if (Math.abs(determinant) <= tolerance) return false;
+    const u = ((c.x - a.x) * (d.y - c.y) - (c.y - a.y) * (d.x - c.x)) / determinant;
+    const v = ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)) / determinant;
+    return u > tolerance && u < 1 - tolerance && v > tolerance && v < 1 - tolerance;
+  };
+
+  for (let i = 0; i < left.length; i++) {
+    const a = left[i];
+    const b = left[(i + 1) % left.length];
+    for (let j = 0; j < right.length; j++) {
+      if (segmentsCross(a, b, right[j], right[(j + 1) % right.length])) return true;
+    }
+  }
+  return false;
+}
+
+function ringCentroid(ring: { x: number; y: number }[]): { x: number; y: number } {
+  return ring.reduce(
+    (sum, point) => ({ x: sum.x + point.x / ring.length, y: sum.y + point.y / ring.length }),
+    { x: 0, y: 0 },
+  );
+}
+
+function validateHoleTopology(
+  outer: { x: number; y: number }[],
+  holes: { x: number; y: number }[][],
+): void {
+  for (let index = 0; index < holes.length; index++) {
+    const hole = holes[index];
+    const verticesInside = hole.every((point) => pointInRing(point, outer) || pointOnRingBoundary(point, outer));
+    const centroidInside = pointInRing(ringCentroid(hole), outer);
+    if (!verticesInside || !centroidInside || ringsCross(outer, hole)) {
+      throw new GeometryError(
+        `hole ${index} is outside or crosses the outer boundary`,
+        "HOLE_OUTSIDE_BOUNDARY",
+      );
+    }
+
+    for (let otherIndex = index + 1; otherIndex < holes.length; otherIndex++) {
+      const other = holes[otherIndex];
+      const overlaps = ringsCross(hole, other)
+        || pointInRing(ringCentroid(hole), other)
+        || pointInRing(ringCentroid(other), hole);
+      if (overlaps) {
+        throw new GeometryError(
+          `hole ${index} overlaps or is nested with hole ${otherIndex}`,
+          "HOLE_OVERLAP",
+        );
+      }
+    }
+  }
 }
 
 function comparePoints(a: { x: number; y: number }, b: { x: number; y: number }): number {
@@ -168,6 +258,33 @@ export function normalizeClosedShape(
       });
     }
     const holes = getHoles(obj, "circle").map((h: any) => cleanPoints(samplePathLikeObject(h), "circle hole"));
+    return normalizePolyWithHoles(outer, holes);
+  }
+
+  if (obj.type === "ellipse") {
+    assertFiniteNumber(obj.cx, "ellipse.cx");
+    assertFiniteNumber(obj.cy, "ellipse.cy");
+    assertFiniteNumber(obj.rx, "ellipse.rx");
+    assertFiniteNumber(obj.ry, "ellipse.ry");
+    const rotation = obj.rotation ?? 0;
+    assertFiniteNumber(rotation, "ellipse.rotation");
+    if (obj.rx <= GEOMETRY_TOLERANCES.intersection || obj.ry <= GEOMETRY_TOLERANCES.intersection) {
+      throw new GeometryError("ellipse radii must be positive", "INVALID_CLOSED_SHAPE");
+    }
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const outer = [];
+    const segments = 64;
+    for (let i = 0; i < segments; i++) {
+      const angle = (i * 2 * Math.PI) / segments;
+      const localX = obj.rx * Math.cos(angle);
+      const localY = obj.ry * Math.sin(angle);
+      outer.push({
+        x: obj.cx + localX * cos - localY * sin,
+        y: obj.cy + localX * sin + localY * cos,
+      });
+    }
+    const holes = getHoles(obj, "ellipse").map((h: any) => cleanPoints(samplePathLikeObject(h), "ellipse hole"));
     return normalizePolyWithHoles(outer, holes);
   }
   

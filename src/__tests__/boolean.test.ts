@@ -79,6 +79,14 @@ describe("normalizeClosedShape()", () => {
       radius: 0,
     } as any)).toThrow("INVALID_CLOSED_SHAPE");
     expect(() => normalizeClosedShape({
+      id: "ellipse",
+      type: "ellipse",
+      cx: 0,
+      cy: 0,
+      rx: 0,
+      ry: 2,
+    } as any)).toThrow("INVALID_CLOSED_SHAPE");
+    expect(() => normalizeClosedShape({
       id: "rect",
       type: "rect",
       x: 0,
@@ -92,6 +100,31 @@ describe("normalizeClosedShape()", () => {
       points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }],
       holes: null,
     } as any)).toThrow("INVALID_CLOSED_SHAPE");
+  });
+
+  it("normalizes rotated ellipse boundaries and preserves ellipse holes", () => {
+    const result = normalizeClosedShape({
+      id: "ellipse",
+      type: "ellipse",
+      cx: 20,
+      cy: 20,
+      rx: 10,
+      ry: 5,
+      rotation: Math.PI / 4,
+      holes: [{
+        segments: [
+          { type: "line", x1: 18, y1: 18, x2: 22, y2: 18 },
+          { type: "line", x1: 22, y1: 18, x2: 22, y2: 22 },
+          { type: "line", x1: 22, y1: 22, x2: 18, y2: 22 },
+          { type: "line", x1: 18, y1: 22, x2: 18, y2: 18 },
+        ],
+      }],
+    } as any);
+
+    expect(result.outer).toHaveLength(64);
+    expect(result.holes).toHaveLength(1);
+    expect(signedRingArea(result.outer)).toBeGreaterThan(0);
+    expect(signedRingArea(result.holes![0])).toBeLessThan(0);
   });
 
   it("canonicalizes hole order as well as ring winding", () => {
@@ -137,6 +170,29 @@ describe("normalizeClosedShape()", () => {
       })) },
     ]));
     expect(first).toEqual(second);
+  });
+
+  it("rejects holes outside the outer boundary at the geometry boundary", () => {
+    expect(() => normalizeClosedShape(polygon("outside", [
+      { x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }, { x: 0, y: 20 },
+    ], [{ segments: [
+      { type: "line", x1: 30, y1: 30, x2: 40, y2: 30 },
+      { type: "line", x1: 40, y1: 30, x2: 40, y2: 40 },
+      { type: "line", x1: 40, y1: 40, x2: 30, y2: 40 },
+      { type: "line", x1: 30, y1: 40, x2: 30, y2: 30 },
+    ] }]))).toThrow("HOLE_OUTSIDE_BOUNDARY");
+  });
+
+  it("rejects overlapping or nested holes at the geometry boundary", () => {
+    const ring = (x1: number, y1: number, x2: number, y2: number) => ({ segments: [
+      { type: "line", x1, y1, x2, y2: y1 },
+      { type: "line", x1: x2, y1, x2, y2 },
+      { type: "line", x1: x2, y1: y2, x2: x1, y2 },
+      { type: "line", x1, y1: y2, x2: x1, y2: y1 },
+    ] });
+    expect(() => normalizeClosedShape(polygon("overlap", [
+      { x: 0, y: 0 }, { x: 30, y: 0 }, { x: 30, y: 30 }, { x: 0, y: 30 },
+    ], [ring(4, 4, 16, 16), ring(12, 12, 24, 24)]))).toThrow("HOLE_OVERLAP");
   });
 
   it("reports missing clone targets with a stable package error", () => {

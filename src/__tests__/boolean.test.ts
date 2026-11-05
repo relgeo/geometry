@@ -175,6 +175,17 @@ describe("ClipperBooleanEngine() input/output contract", () => {
     expect(signedRingArea(first[0].outer)).toBeGreaterThan(0);
   });
 
+  it("implements union and xor with stable island ordering", () => {
+    const union = engine.union([left, right]);
+    expect(union).toHaveLength(1);
+    expect(signedRingArea(union[0].outer)).toBeCloseTo(150);
+
+    const xor = engine.xor([left, right]);
+    expect(xor).toHaveLength(2);
+    expect(xor.map((island) => island.outer[0].x)).toEqual([0, 10]);
+    expect(xor.every((island) => signedRingArea(island.outer) > 0)).toBe(true);
+  });
+
   it("preserves canonical holes through an intersect result", () => {
     const withHole = {
       outer: [

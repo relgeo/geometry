@@ -13,6 +13,7 @@ export type GeometryErrorCode =
   | "INTERSECTION_INDEX_OUT_OF_RANGE"
   | "INVALID_INTERSECTION_SELECTOR"
   | "INVALID_INTERSECTION_INPUT"
+  | "INVALID_TRANSFORM"
   | "UNSUPPORTED_FEATURE";
 
 export class GeometryError extends Error {

@@ -55,6 +55,17 @@ describe("Affine Transform Pipeline", () => {
     expect(res.x).toBe(-10);
     expect(res.y).toBe(10);
   });
+
+  it("rejects non-finite and invalid transform contracts", () => {
+    expect(() => applyTransformPipeline(
+      { x: 0, y: 0 },
+      [{ type: "translate", x: Number.NaN, y: 0 }],
+    )).toThrow("INVALID_TRANSFORM");
+    expect(() => applyTransformPipeline(
+      { x: 0, y: 0 },
+      [{ type: "mirror", axis: "diagonal" as any, origin: { x: 0, y: 0 } }],
+    )).toThrow("INVALID_TRANSFORM");
+  });
 });
 
 describe("Angle Utilities", () => {

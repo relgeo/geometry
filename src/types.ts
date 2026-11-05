@@ -314,6 +314,11 @@ export interface ConstraintViolation {
   deviation: number;
   path: string;
   involvedObjects: string[];
+  /** Stable result metadata for the Core Runtime diagnostic boundary. */
+  severity?: 'error' | 'warning' | 'info';
+  origin?: 'constraint';
+  expected?: unknown;
+  actual?: unknown;
   visualHelper?: {
     x1: number;
     y1: number;

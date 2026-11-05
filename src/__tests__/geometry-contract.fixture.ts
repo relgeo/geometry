@@ -6,6 +6,7 @@ export type GeometryContractCase = {
   left: Record<string, unknown>;
   right: Record<string, unknown>;
   expectedPoints?: Array<{ x: number; y: number }>;
+  pointTolerance?: number;
   expectedError?: string;
 };
 
@@ -49,6 +50,40 @@ export const geometryContractFixture: GeometryContractCase[] = [
     left: { id: "circle", type: "circle", cx: 0, cy: 0, radius: 10 },
     right: { id: "tangent", type: "line", x1: -20, y1: 10, x2: 20, y2: 10 },
     expectedPoints: [{ x: 0, y: 10 }],
+  },
+  {
+    id: "boundary-line-quadratic-segment",
+    category: "boundary",
+    left: { id: "line", type: "line", x1: -10, y1: 50, x2: 110, y2: 50 },
+    right: {
+      id: "quadratic-path",
+      type: "path",
+      segments: [{ type: "quadratic", x1: 0, y1: 0, cpx: 0, cpy: 100, x2: 100, y2: 100 }],
+    },
+    expectedPoints: [{ x: 8.57864376, y: 50 }],
+    pointTolerance: 1e-5,
+  },
+  {
+    id: "boundary-line-cubic-segment",
+    category: "boundary",
+    left: { id: "line", type: "line", x1: 50, y1: -10, x2: 50, y2: 110 },
+    right: {
+      id: "cubic-path",
+      type: "path",
+      segments: [{
+        type: "cubic",
+        x1: 0,
+        y1: 0,
+        cp1x: 0,
+        cp1y: 100,
+        cp2x: 100,
+        cp2y: 100,
+        x2: 100,
+        y2: 0,
+      }],
+    },
+    expectedPoints: [{ x: 50, y: 75 }],
+    pointTolerance: 1e-5,
   },
   {
     id: "invalid-zero-length-line",

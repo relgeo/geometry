@@ -81,6 +81,8 @@ type CubicLike = { type: "cubic"; x1: number; y1: number; cp1x: number; cp1y: nu
 
 // Internal tolerance for geometric equality. See tolerance.ts for the policy.
 const TOLERANCE = GEOMETRY_TOLERANCES.intersection;
+const CURVE_FLATNESS_TOLERANCE = 1e-7;
+const MAX_CURVE_FLATTEN_DEPTH = 12;
 
 function assertFinite(value: number, label: string): void {
   if (!Number.isFinite(value)) {
@@ -577,6 +579,83 @@ function sampleCubic(curve: CubicLike, steps = 64): Point2D[] {
   return points;
 }
 
+function midpoint(a: Point2D, b: Point2D): Point2D {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+function pointLineDistance(point: Point2D, start: Point2D, end: Point2D): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= TOLERANCE) return Math.hypot(point.x - start.x, point.y - start.y);
+  return Math.abs((point.x - start.x) * dy - (point.y - start.y) * dx) / length;
+}
+
+function flattenQuadratic(curve: QuadraticLike): Point2D[] {
+  const result: Point2D[] = [{ x: curve.x1, y: curve.y1 }];
+
+  const visit = (p0: Point2D, control: Point2D, p1: Point2D, depth: number): void => {
+    if (depth >= MAX_CURVE_FLATTEN_DEPTH || pointLineDistance(control, p0, p1) <= CURVE_FLATNESS_TOLERANCE) {
+      result.push(p1);
+      return;
+    }
+
+    const p01 = midpoint(p0, control);
+    const p12 = midpoint(control, p1);
+    const split = midpoint(p01, p12);
+    visit(p0, p01, split, depth + 1);
+    visit(split, p12, p1, depth + 1);
+  };
+
+  visit(
+    { x: curve.x1, y: curve.y1 },
+    { x: curve.cpx, y: curve.cpy },
+    { x: curve.x2, y: curve.y2 },
+    0,
+  );
+  return result;
+}
+
+function flattenCubic(curve: CubicLike): Point2D[] {
+  const result: Point2D[] = [{ x: curve.x1, y: curve.y1 }];
+
+  const visit = (
+    p0: Point2D,
+    cp1: Point2D,
+    cp2: Point2D,
+    p1: Point2D,
+    depth: number,
+  ): void => {
+    const flatness = Math.max(
+      pointLineDistance(cp1, p0, p1),
+      pointLineDistance(cp2, p0, p1),
+    );
+    if (depth >= MAX_CURVE_FLATTEN_DEPTH || flatness <= CURVE_FLATNESS_TOLERANCE) {
+      result.push(p1);
+      return;
+    }
+
+    const p01 = midpoint(p0, cp1);
+    const p12 = midpoint(cp1, cp2);
+    const p23 = midpoint(cp2, p1);
+    const p012 = midpoint(p01, p12);
+    const p123 = midpoint(p12, p23);
+    const split = midpoint(p012, p123);
+
+    visit(p0, p01, p012, split, depth + 1);
+    visit(split, p123, p23, p1, depth + 1);
+  };
+
+  visit(
+    { x: curve.x1, y: curve.y1 },
+    { x: curve.cp1x, y: curve.cp1y },
+    { x: curve.cp2x, y: curve.cp2y },
+    { x: curve.x2, y: curve.y2 },
+    0,
+  );
+  return result;
+}
+
 function polylineToSegments(points: Point2D[]): LineLike[] {
   const segments: LineLike[] = [];
   for (let i = 1; i < points.length; i++) {
@@ -599,9 +678,9 @@ function approximateSegment(segment: SegmentLike): LineLike[] {
     return polylineToSegments(sampleArc(segment));
   }
   if (segment.type === "quadratic") {
-    return polylineToSegments(sampleQuadratic(segment));
+    return polylineToSegments(flattenQuadratic(segment));
   }
-  return polylineToSegments(sampleCubic(segment));
+  return polylineToSegments(flattenCubic(segment));
 }
 
 function objectToPathSegments(obj: any): SegmentLike[] | null {

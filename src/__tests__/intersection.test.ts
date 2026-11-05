@@ -315,6 +315,65 @@ describe("computeIntersections() dispatch", () => {
     expect(pts[0].y).toBeCloseTo(0);
   });
 
+  it("line-quadratic uses the curve geometry instead of a fixed coarse sample", () => {
+    const line = { id: "l", type: "line", x1: -10, y1: 50, x2: 110, y2: 50 };
+    const curve = {
+      id: "q",
+      type: "path",
+      segments: [{ type: "quadratic", x1: 0, y1: 0, cpx: 0, cpy: 100, x2: 100, y2: 100 }],
+    };
+
+    const points = computeIntersections(line, curve, "line-quadratic");
+
+    expect(points).toHaveLength(1);
+    expect(points[0].x).toBeCloseTo(8.57864376, 5);
+    expect(points[0].y).toBeCloseTo(50, 5);
+  });
+
+  it("line-cubic returns the stable crossing for a cubic path segment", () => {
+    const line = { id: "l", type: "line", x1: 50, y1: -10, x2: 50, y2: 110 };
+    const curve = {
+      id: "c",
+      type: "path",
+      segments: [{
+        type: "cubic",
+        x1: 0,
+        y1: 0,
+        cp1x: 0,
+        cp1y: 100,
+        cp2x: 100,
+        cp2y: 100,
+        x2: 100,
+        y2: 0,
+      }],
+    };
+
+    const points = computeIntersections(line, curve, "line-cubic");
+
+    expect(points).toHaveLength(1);
+    expect(points[0].x).toBeCloseTo(50, 5);
+    expect(points[0].y).toBeCloseTo(75, 5);
+  });
+
+  it("rejects degenerate quadratic and cubic segments with a stable input code", () => {
+    const line = { id: "l", type: "line", x1: -10, y1: 0, x2: 110, y2: 0 };
+    const degenerateQuadratic = {
+      id: "q",
+      type: "path",
+      segments: [{ type: "quadratic", x1: 0, y1: 0, cpx: 0, cpy: 0, x2: 0, y2: 0 }],
+    };
+    const degenerateCubic = {
+      id: "c",
+      type: "path",
+      segments: [{ type: "cubic", x1: 0, y1: 0, cp1x: 0, cp1y: 0, cp2x: 0, cp2y: 0, x2: 0, y2: 0 }],
+    };
+
+    expect(() => computeIntersections(line, degenerateQuadratic, "degenerate-quadratic"))
+      .toThrow("INVALID_INTERSECTION_INPUT");
+    expect(() => computeIntersections(line, degenerateCubic, "degenerate-cubic"))
+      .toThrow("INVALID_INTERSECTION_INPUT");
+  });
+
   it("path-path", () => {
     const p1 = {
       id: "p1",
@@ -422,7 +481,17 @@ describe("deterministic geometry contract fixture", () => {
         continue;
       }
 
-      expect(computeIntersections(testCase.left, testCase.right, testCase.id)).toEqual(testCase.expectedPoints);
+      const actual = computeIntersections(testCase.left, testCase.right, testCase.id);
+      if (testCase.pointTolerance !== undefined) {
+        expect(actual).toHaveLength(testCase.expectedPoints?.length ?? 0);
+        actual.forEach((point, index) => {
+          const expected = testCase.expectedPoints![index];
+          expect(Math.hypot(point.x - expected.x, point.y - expected.y))
+            .toBeLessThanOrEqual(testCase.pointTolerance!);
+        });
+      } else {
+        expect(actual).toEqual(testCase.expectedPoints);
+      }
     }
   });
 

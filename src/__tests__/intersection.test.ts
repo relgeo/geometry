@@ -12,6 +12,7 @@ import {
   SUPPORTED_INTERSECTION_SELECTORS,
 } from "../intersection";
 import { GeometryError } from "../error";
+import { GEOMETRY_TOLERANCES } from "../tolerance";
 import { geometryContractFixture, selectorContractFixture } from "./geometry-contract.fixture";
 
 // ─────────────────────────────────────────────
@@ -262,6 +263,12 @@ describe("applySelector()", () => {
     expect(() => applySelector([], "first", "empty")).toThrow("NO_INTERSECTION");
     expect(() => applySelector(pts, undefined, "multiple")).toThrow("MULTIPLE_INTERSECTIONS");
     expect(() => applySelector(pts, { index: 10 }, "index")).toThrow("INTERSECTION_INDEX_OUT_OF_RANGE");
+  });
+});
+
+describe("intersection tolerance contract", () => {
+  it("publishes the deterministic comparison tolerance used for deduplication and ordering", () => {
+    expect(GEOMETRY_TOLERANCES.intersection).toBe(1e-9);
   });
 });
 
